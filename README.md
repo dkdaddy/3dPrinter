@@ -26,7 +26,16 @@ node src/parts/gearwheel/index.js --teeth 14 --module 2.0 --height 8 --bore 5.0 
 node src/parts/gearwheel/index.js --teeth 24 --module 1.5 --height 7 --hub-dia 11 --hub-height 5
 ```
 
-### 3. Generate All Registered Parts
+### 3. Generate the Focus Wheel
+Diamond-knurled 38mm x 8mm wheel with rounded outer edges and a hole shaped like a 20-tooth GT2 pulley (12.22mm tip diameter by default) for a push fit (`output/focus-wheel.stl`):
+```bash
+npm run build:focus-wheel
+# options: --diameter --width --knurls --knurl-depth --knurl-style (diamond|straight) --edge-radius --teeth --pitch --tip-dia --clearance
+node src/parts/focus-wheel/index.js --tip-dia 12.6 --clearance 0.15
+```
+Increase `--clearance` (radial mm, default 0.1) if too tight, decrease if loose.
+
+### 4. Generate All Registered Parts
 ```bash
 npm run build:all
 ```

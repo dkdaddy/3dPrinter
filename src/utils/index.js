@@ -11,3 +11,5 @@ export * from './stl.js';
 export * from './zip.js';
 export * from './threemf.js';
 export * from './gear.js';
+export * from './gt2.js';
+export * from './knurl.js';
