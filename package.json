@@ -1,0 +1,21 @@
+{
+  "name": "3d-printer-parts",
+  "version": "1.0.0",
+  "description": "Utilities and parametric generators for 3D printable parts in JavaScript",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "build:gear": "node src/parts/gearwheel/index.js",
+    "build:all": "node scripts/generate-all.js"
+  },
+  "keywords": [
+    "3d-printing",
+    "stl",
+    "cad",
+    "gear",
+    "involute-gear",
+    "parametric"
+  ],
+  "author": "",
+  "license": "MIT"
+}

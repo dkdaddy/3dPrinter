@@ -1,0 +1,536 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Part Viewer - Small Toothed Gearwheel</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #11141a;
+      color: #e0e6ed;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+    }
+    #viewport {
+      flex: 1;
+      height: 100%;
+      position: relative;
+    }
+    #sidebar {
+      width: 320px;
+      background: #181d26;
+      border-left: 1px solid #283140;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: -4px 0 16px rgba(0,0,0,0.3);
+      z-index: 10;
+      overflow-y: auto;
+    }
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #1e3a8a;
+      color: #93c5fd;
+      font-weight: 600;
+    }
+    .card {
+      background: #1f2633;
+      border: 1px solid #2e394d;
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      padding: 3px 0;
+      border-bottom: 1px solid #283344;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #94a3b8; }
+    .stat-val { font-weight: 600; color: #f1f5f9; }
+    .stat-val.highlight { color: #34d399; }
+
+    .btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s ease;
+      width: 100%;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .btn-secondary {
+      background: #334155;
+    }
+    .btn-secondary:hover { background: #475569; }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .toggle-btn {
+      background: #1f2633;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .toggle-btn.active {
+      background: #1e3a8a;
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    #drop-hint {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      padding: 10px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+</head>
+<body>
+  <div id="viewport">
+    <div id="drop-hint">🖱️ Left click: Rotate | Right click: Pan | Scroll: Zoom | Drag & Drop .STL anywhere</div>
+  </div>
+
+  <div id="sidebar">
+    <div>
+      <h1>⚙️ 3D Print Part Viewer</h1>
+      <span class="badge">Involute Gearwheel</span>
+    </div>
+
+    <input type="file" id="file-input" accept=".stl,.3mf" style="display: none;" />
+    <button class="btn" onclick="document.getElementById('file-input').click()">
+      📁 Load STL / 3MF File
+    </button>
+
+    <div class="card">
+      <div class="card-title">Part Information</div>
+      <div class="stat-row">
+        <span class="stat-label">File Name</span>
+        <span class="stat-val" id="stat-name">small-gearwheel.stl</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Dimensions (XYZ)</span>
+        <span class="stat-val" id="stat-size">26.5 x 26.5 x 7.0 mm</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Triangles</span>
+        <span class="stat-val" id="stat-tris">1,616</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Vertices</span>
+        <span class="stat-val" id="stat-verts">808</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Watertight</span>
+        <span class="stat-val highlight" id="stat-watertight">YES (Solid Manifold)</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">3D Print Estimates</div>
+      <div class="stat-row">
+        <span class="stat-label">Volume</span>
+        <span class="stat-val" id="stat-volume">2.85 cm³</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Est. Weight (PLA)</span>
+        <span class="stat-val" id="stat-weight">3.53 g</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">1.75mm Filament</span>
+        <span class="stat-val" id="stat-filament">1.18 m</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Display Options</div>
+      <div class="controls-grid">
+        <button class="toggle-btn" id="btn-wireframe" onclick="toggleWireframe()">Wireframe</button>
+        <button class="toggle-btn active" id="btn-rotate" onclick="toggleRotate()">Auto Rotate</button>
+        <button class="toggle-btn active" id="btn-grid" onclick="toggleGrid()">Print Bed</button>
+        <button class="toggle-btn" onclick="resetCamera()">Reset View</button>
+      </div>
+    </div>
+
+    <div style="margin-top: auto; font-size: 0.75rem; color: #64748b; text-align: center;">
+      Built with Three.js & Node.js 3D Printer Utils
+    </div>
+  </div>
+
+  <script>
+    let scene, camera, renderer, controls, currentMesh, gridHelper;
+    let autoRotate = true;
+    let wireframe = false;
+
+    function init() {
+      const container = document.getElementById('viewport');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x11141a);
+
+      camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(35, 45, 45);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight1.position.set(50, 80, 50);
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0x60a5fa, 0.4);
+      dirLight2.position.set(-50, -30, -50);
+      scene.add(dirLight2);
+
+      // Print Bed Grid (100x100mm)
+      gridHelper = new THREE.GridHelper(100, 20, 0x3b82f6, 0x283140);
+      gridHelper.position.y = 0;
+      scene.add(gridHelper);
+
+      // Setup window resize
+      window.addEventListener('resize', onWindowResize);
+
+      // Setup drag and drop
+      window.addEventListener('dragover', (e) => e.preventDefault());
+      window.addEventListener('drop', handleFileDrop);
+
+      // Setup file input
+      document.getElementById('file-input').addEventListener('change', handleFileSelect);
+
+      // Try loading default gear STL
+      loadDefaultGear();
+
+      animate();
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('viewport');
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (autoRotate && currentMesh) {
+        currentMesh.rotation.z += 0.008;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Welds vertices, checks every edge is shared by exactly two oppositely-directed faces, and sums signed volume
+    function analyzeGeometry(geometry) {
+      const pos = geometry.attributes.position;
+      const ids = new Map();
+      const idOf = (i) => {
+        const key = `${pos.getX(i).toFixed(4)},${pos.getY(i).toFixed(4)},${pos.getZ(i).toFixed(4)}`;
+        if (!ids.has(key)) ids.set(key, ids.size);
+        return ids.get(key);
+      };
+      const edges = new Map();
+      let volume = 0;
+      for (let t = 0; t < pos.count; t += 3) {
+        const tri = [t, t + 1, t + 2];
+        const idx = tri.map(idOf);
+        for (let k = 0; k < 3; k++) {
+          const a = idx[k], b = idx[(k + 1) % 3];
+          const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+          const e = edges.get(key) || { count: 0, dir: 0 };
+          e.count++;
+          e.dir += a < b ? 1 : -1;
+          edges.set(key, e);
+        }
+        const [p, q, r] = tri.map(i => new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+        volume += p.dot(q.clone().cross(r)) / 6;
+      }
+      let watertight = true;
+      for (const e of edges.values()) {
+        if (e.count !== 2 || e.dir !== 0) { watertight = false; break; }
+      }
+      return { vertexCount: ids.size, watertight, volume: Math.abs(volume) };
+    }
+
+    function setMesh(geometry, fileName = 'part.stl') {
+      if (currentMesh) {
+        scene.remove(currentMesh);
+      }
+
+      geometry.computeVertexNormals();
+      geometry.center();
+
+      // Compute bounding box
+      geometry.computeBoundingBox();
+      const bbox = geometry.boundingBox;
+      const sizeX = (bbox.max.x - bbox.min.x).toFixed(1);
+      const sizeY = (bbox.max.y - bbox.min.y).toFixed(1);
+      const sizeZ = (bbox.max.z - bbox.min.z).toFixed(1);
+
+      // Place part sitting upright on print bed
+      geometry.translate(0, 0, (bbox.max.z - bbox.min.z) / 2);
+
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        metalness: 0.15,
+        roughness: 0.4,
+        wireframe: wireframe
+      });
+
+      // Orient so Z-up matches 3D printing convention
+      currentMesh = new THREE.Mesh(geometry, material);
+      currentMesh.rotation.x = -Math.PI / 2; // Three.js Y-up -> STL Z-up
+      scene.add(currentMesh);
+
+      // Update UI stats
+      const triCount = geometry.attributes.position.count / 3;
+      const stats = analyzeGeometry(geometry);
+      document.getElementById('stat-name').textContent = fileName;
+      document.getElementById('stat-size').textContent = `${sizeX} x ${sizeY} x ${sizeZ} mm`;
+      document.getElementById('stat-tris').textContent = triCount.toLocaleString();
+      document.getElementById('stat-verts').textContent = stats.vertexCount.toLocaleString();
+      const wt = document.getElementById('stat-watertight');
+      wt.textContent = stats.watertight ? 'YES (Solid Manifold)' : 'NO (Open / Non-manifold)';
+      wt.classList.toggle('highlight', stats.watertight);
+      const volumeCm3 = stats.volume / 1000;
+      const weightG = volumeCm3 * 1.24; // PLA density g/cm³
+      const filamentM = (stats.volume / (Math.PI * 0.875 * 0.875)) / 1000; // 1.75mm filament
+      document.getElementById('stat-volume').textContent = `${volumeCm3.toFixed(2)} cm³`;
+      document.getElementById('stat-weight').textContent = `${weightG.toFixed(2)} g`;
+      document.getElementById('stat-filament').textContent = `${filamentM.toFixed(2)} m`;
+
+      // Reset camera
+      controls.target.set(0, (bbox.max.z - bbox.min.z) / 2, 0);
+      camera.position.set(sizeX * 1.6, sizeZ * 2.5 + 20, sizeY * 1.6);
+      controls.update();
+    }
+
+    function loadSTLBuffer(arrayBuffer, fileName) {
+      const loader = new THREE.STLLoader();
+      const geometry = loader.parse(arrayBuffer);
+      setMesh(geometry, fileName);
+    }
+
+    // ---- 3MF support (zip + XML, flattened to a single triangle soup in mm) ----
+    async function unzip(buffer) {
+      const view = new DataView(buffer);
+      const bytes = new Uint8Array(buffer);
+      let eocd = -1;
+      for (let i = buffer.byteLength - 22; i >= 0; i--) {
+        if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      }
+      if (eocd < 0) throw new Error('Not a valid 3MF (zip) file');
+      const count = view.getUint16(eocd + 10, true);
+      let p = view.getUint32(eocd + 16, true);
+      const files = {};
+      for (let n = 0; n < count; n++) {
+        const method = view.getUint16(p + 10, true);
+        const compSize = view.getUint32(p + 20, true);
+        const nameLen = view.getUint16(p + 28, true);
+        const extraLen = view.getUint16(p + 30, true);
+        const commentLen = view.getUint16(p + 32, true);
+        const offset = view.getUint32(p + 42, true);
+        const name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
+        p += 46 + nameLen + extraLen + commentLen;
+        if (!/\.model$/i.test(name)) continue;
+        const start = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true);
+        const raw = bytes.subarray(start, start + compSize);
+        if (method === 0) files[name] = raw;
+        else {
+          const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+          files[name] = new Uint8Array(await new Response(stream).arrayBuffer());
+        }
+      }
+      return files;
+    }
+
+    // 3MF row-vector transform: p' = p * M, 12 numbers (m00 m01 m02 m10 ... m30 m31 m32)
+    const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+    function parseTransform(text) {
+      return text ? text.trim().split(/\s+/).map(Number) : IDENT;
+    }
+    function composeTransforms(a, b) { // apply a, then b
+      const to4 = m => [[m[0], m[1], m[2], 0], [m[3], m[4], m[5], 0], [m[6], m[7], m[8], 0], [m[9], m[10], m[11], 1]];
+      const A = to4(a), B = to4(b), out = [];
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
+        out.push(A[r][0] * B[0][c] + A[r][1] * B[1][c] + A[r][2] * B[2][c] + A[r][3] * B[3][c]);
+      }
+      return out;
+    }
+
+    async function load3MFBuffer(arrayBuffer, fileName) {
+      const files = await unzip(arrayBuffer);
+      const modelName = Object.keys(files).find(n => /3dmodel\.model$/i.test(n));
+      if (!modelName) throw new Error('3MF has no 3D/3dmodel.model');
+      const doc = new DOMParser().parseFromString(new TextDecoder().decode(files[modelName]), 'application/xml');
+      const unitScale = { micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 }[
+        doc.documentElement.getAttribute('unit') || 'millimeter'] || 1;
+
+      const objects = {};
+      for (const o of doc.getElementsByTagName('object')) objects[o.getAttribute('id')] = o;
+
+      const positions = [];
+      function visit(id, m) {
+        const o = objects[id];
+        const mesh = o.getElementsByTagName('mesh')[0];
+        if (mesh) {
+          const v = [];
+          for (const e of mesh.getElementsByTagName('vertex')) {
+            const x = +e.getAttribute('x'), y = +e.getAttribute('y'), z = +e.getAttribute('z');
+            v.push([
+              (x * m[0] + y * m[3] + z * m[6] + m[9]) * unitScale,
+              (x * m[1] + y * m[4] + z * m[7] + m[10]) * unitScale,
+              (x * m[2] + y * m[5] + z * m[8] + m[11]) * unitScale
+            ]);
+          }
+          for (const t of mesh.getElementsByTagName('triangle')) {
+            for (const k of ['v1', 'v2', 'v3']) positions.push(...v[+t.getAttribute(k)]);
+          }
+        }
+        for (const c of o.getElementsByTagName('component')) {
+          visit(c.getAttribute('objectid'), composeTransforms(parseTransform(c.getAttribute('transform')), m));
+        }
+      }
+      for (const item of doc.getElementsByTagName('item')) {
+        visit(item.getAttribute('objectid'), parseTransform(item.getAttribute('transform')));
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      setMesh(geometry, fileName);
+    }
+
+    async function loadModelBuffer(arrayBuffer, fileName) {
+      try {
+        if (/\.3mf$/i.test(fileName)) await load3MFBuffer(arrayBuffer, fileName);
+        else loadSTLBuffer(arrayBuffer, fileName);
+      } catch (err) {
+        console.error(err);
+        alert(`Could not load ${fileName}: ${err.message}`);
+      }
+    }
+
+    function handleFileDrop(e) {
+      e.preventDefault();
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        const file = files[0];
+        const reader = new FileReader();
+        reader.onload = (event) => loadModelBuffer(event.target.result, file.name);
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    function handleFileSelect(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => loadModelBuffer(event.target.result, file.name);
+        reader.readAsArrayBuffer(file);
+      }
+    }
+
+    async function loadDefaultGear() {
+      // Optional ?file=../output/part.3mf (or .stl) to preload a model when served over HTTP
+      const target = new URLSearchParams(location.search).get('file') || '../output/small-gearwheel.stl';
+      try {
+        const response = await fetch(target);
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          await loadModelBuffer(buffer, target.split('/').pop());
+        }
+      } catch (err) {
+        // Fallback: If opening as local file without web server, prompt user to load file
+        console.log('Direct fetch skipped (likely file:// protocol). Use "Load STL File" button or drag & drop.');
+      }
+    }
+
+    function toggleWireframe() {
+      wireframe = !wireframe;
+      if (currentMesh) currentMesh.material.wireframe = wireframe;
+      document.getElementById('btn-wireframe').classList.toggle('active', wireframe);
+    }
+
+    function toggleRotate() {
+      autoRotate = !autoRotate;
+      document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+    }
+
+    function toggleGrid() {
+      gridHelper.visible = !gridHelper.visible;
+      document.getElementById('btn-grid').classList.toggle('active', gridHelper.visible);
+    }
+
+    function resetCamera() {
+      if (currentMesh) {
+        currentMesh.geometry.computeBoundingBox();
+        const bbox = currentMesh.geometry.boundingBox;
+        const maxDim = Math.max(bbox.max.x - bbox.min.x, bbox.max.y - bbox.min.y, bbox.max.z - bbox.min.z);
+        camera.position.set(maxDim * 1.8, maxDim * 2.2, maxDim * 1.8);
+        controls.target.set(0, (bbox.max.z - bbox.min.z) / 2, 0);
+        controls.update();
+      }
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
