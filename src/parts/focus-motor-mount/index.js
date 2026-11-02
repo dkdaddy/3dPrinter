@@ -20,8 +20,8 @@ const __dirname = path.dirname(__filename);
  * Focus stepper motor mount.
  *
  * Coordinates: X along the 70mm long edge, Y along the 40mm short edge, Z up.
- * The plate sits at Z 0..plateThickness; the locating stud and the upright wall
- * both rise from the plate's top face. The wall spans the full plate width (Y).
+ * The plate sits at Z 0..plateThickness; the upright wall rises from the plate's top face.
+ * The wall spans wallWidth along Y, starting at the long edge Y = 0.
  * Three through-slots (two screw slots and a spindle slot) run along X so the motor can be
  * repositioned. The motor bolts are further apart than the screw slots, so the motor is twisted
  * and the slots are staggered and offset to follow it (see slotLayout).
@@ -31,13 +31,10 @@ export const DEFAULT_FOCUS_MOTOR_MOUNT_CONFIG = {
   plateLength: 70,      // mm, X
   plateWidth: 40,       // mm, Y
   plateThickness: 3,    // mm
-  studDiameter: 8.3,    // mm
-  studHeight: 10,       // mm above the plate
-  studFromLongEdge: 10, // mm, stud centre to the long edge (Y = 0)
-  studFromShortEdge: 10, // mm, stud centre to the short edge (X = 0)
+  wallCentreX: 21.5,    // mm, wall mid-plane from the short edge (X = 0)
   wallThickness: 3,     // mm
   wallHeight: 15,       // mm above the plate
-  wallOffsetFromStud: 11.5, // mm, wall mid-plane to stud centre, along +X
+  wallWidth: 20,        // mm, along Y, starting at the long edge Y = 0
   slotStartFromStudEnd: 24, // mm, start of the slot group, measured from X = 0 (1mm clear of the wall)
   slotEndFromStudEnd: 65,   // mm, end of the slot group, measured from X = 0
   screwSpacing: 30,     // mm, between the two screw slot centre lines (across the plate)
@@ -48,17 +45,18 @@ export const DEFAULT_FOCUS_MOTOR_MOUNT_CONFIG = {
   shaftSide: 'stud',    // 'stud' = shaft on the stud/wall (low X) side of the bolt line, 'far' = other side
   lowYBoltToward: 'stud', // twist direction: the bolt on the Y = 0 side moves toward 'stud' (low X) or 'far'
   minSlotWall: 1,       // mm, minimum material between slots
-  plateCornerRadius: 6, // mm, vertical corners of the base plate
+  plateCornerRadius: 20, // mm, vertical corners of the base plate (all except the two below)
+  highSlotCornerRadius: 6, // mm, the plate corner at X = plateLength, Y = plateWidth (nearest the high slot)
+  originCornerRadius: 6, // mm, the plate corner at X = 0, Y = 0 (diagonal to the high-slot corner)
   wallCornerRadius: 6,  // mm, top corners of the upright wall
   wallHoleDiameter: 4,  // mm, two fixing holes through the upright wall
-  wallHoleInset: 8,     // mm, hole centres from the wall's side and top edges
+  wallHoleInset: 5,     // mm, hole centres from the wall's side and top edges
   wallHoleSegments: 32,
   baseHoleDiameter: 4,  // mm, fixing hole in the base plate
   baseHoleFromStudEnd: 10, // mm, hole centre from the stud end (X = 0); centred across the width
   baseHoleSegments: 32,
   cornerSegments: 16,   // per 90 degree corner
-  slotCapSegments: 16,
-  studSegments: 64
+  slotCapSegments: 16
 };
 
 /** Points along an arc (degrees, CCW); a zero radius collapses to the single corner point. */
@@ -131,18 +129,15 @@ export function slotLayout(customConfig = {}) {
 
 /**
  * Base plate fixing hole: baseHoleFromStudEnd from the stud end (X = 0), centred across the plate width.
- * Returns { x, y, studGap, wallGap } where the gaps are clear material to the stud and the wall.
+ * Returns { x, y, wallGap } where wallGap is the clear material to the wall.
  */
 export function baseHolePosition(customConfig = {}) {
   const c = { ...DEFAULT_FOCUS_MOTOR_MOUNT_CONFIG, ...customConfig };
-  const sx = c.studFromShortEdge;
-  const sy = c.studFromLongEdge;
-  const sr = c.studDiameter / 2;
   const hr = c.baseHoleDiameter / 2;
-  const w0 = sx + c.wallOffsetFromStud - c.wallThickness / 2;
+  const w0 = c.wallCentreX - c.wallThickness / 2;
   const x = c.baseHoleFromStudEnd;
   const y = c.plateWidth / 2;
-  return { x, y, studGap: Math.hypot(x - sx, y - sy) - sr - hr, wallGap: w0 - hr - x };
+  return { x, y, wallGap: w0 - hr - x };
 }
 
 /** Builds the mount as a single watertight solid (true union, no overlapping shells). */
@@ -152,16 +147,14 @@ export function createFocusMotorMountMesh(customConfig = {}) {
   const W = c.plateWidth;
   const T = c.plateThickness;
   const H = T + c.wallHeight;
-  const sx = c.studFromShortEdge;
-  const sy = c.studFromLongEdge;
-  const sr = c.studDiameter / 2;
-  const sTop = T + c.studHeight;
-  const wallMid = sx + c.wallOffsetFromStud;
+  const sx = c.wallCentreX;
+  const Ww = c.wallWidth;
+  const wallMid = sx;
   const w0 = wallMid - c.wallThickness / 2;
   const w1 = wallMid + c.wallThickness / 2;
 
-  if (sx - sr < 0 || sx + sr > w0 || sy - sr < 0 || sy + sr > W || w1 > L) {
-    throw new Error('Stud and wall do not fit on the plate with these dimensions');
+  if (Ww <= 0 || Ww > W || w0 < 0 || w1 > L) {
+    throw new Error('Wall does not fit on the plate with these dimensions');
   }
   const { slots, travel } = slotLayout(c);
   if (travel <= 0) {
@@ -187,37 +180,46 @@ export function createFocusMotorMountMesh(customConfig = {}) {
 
   const baseHole = baseHolePosition(c);
   const baseHr = c.baseHoleDiameter / 2;
-  if (baseHole.studGap < c.minSlotWall || baseHole.wallGap < c.minSlotWall ||
+  if (baseHole.wallGap < c.minSlotWall ||
       baseHole.x - baseHr < c.minSlotWall || baseHole.y - baseHr < c.minSlotWall || baseHole.y + baseHr > W - c.minSlotWall) {
     throw new Error('Base plate hole does not fit with these dimensions');
   }
   const baseHoleOutline = createCircle(baseHr, c.baseHoleSegments).map(([x, y]) => [baseHole.x + x, baseHole.y + y]);
 
-  const rc = c.plateCornerRadius;
+  // Corner radii: BL = (0,0), BR = (L,0), TR = (L,W) (the high-slot corner), TL = (0,W)
+  const rBL = c.originCornerRadius;
+  const rBR = c.plateCornerRadius;
+  const rTL = c.plateCornerRadius;
+  const rTR = c.highSlotCornerRadius;
   const rw = c.wallCornerRadius;
   const cornerSegments = c.cornerSegments;
   const wallArcBase = H - rw;
-  if (rc < 0 || rw < 0 || 2 * rc > Math.min(L, W) || w0 < rc || w1 > L - rc || 2 * rw > W || rw > c.wallHeight) {
+  if (Math.min(rBL, rBR, rTL, rTR, rw) < 0 || rBL + rTL > W || rBR + rTR > W || rBL + rBR > L || rTL + rTR > L ||
+      w0 < rBL || w1 > L - rBR || 2 * rw > Ww || rw > c.wallHeight) {
     throw new Error('Corner radii do not fit with these dimensions');
   }
+  // Drops consecutive duplicate points (adjacent arcs can meet exactly when radii fill an edge)
+  const dedup = pts => pts.filter((p, i) => {
+    const q = pts[(i + pts.length - 1) % pts.length];
+    return p.some((v, k) => Math.abs(v - q[k]) > 1e-9);
+  });
   // Plate outline in plan (CCW); each corner is an arc, straight edges join them
-  const plan = [
-    ...arcPoints(L - rc, rc, rc, -90, 0, cornerSegments),
-    ...arcPoints(L - rc, W - rc, rc, 0, 90, cornerSegments),
-    ...arcPoints(rc, W - rc, rc, 90, 180, cornerSegments),
-    ...arcPoints(rc, rc, rc, 180, 270, cornerSegments)
-  ];
+  const arcBR = arcPoints(L - rBR, rBR, rBR, -90, 0, cornerSegments);
+  const arcTR = arcPoints(L - rTR, W - rTR, rTR, 0, 90, cornerSegments);
+  const arcTL = arcPoints(rTL, W - rTL, rTL, 90, 180, cornerSegments);
+  const arcBL = arcPoints(rBL, rBL, rBL, 180, 270, cornerSegments);
+  const plan = dedup([...arcBR, ...arcTR, ...arcTL, ...arcBL]);
 
   // Fixing holes through the wall, inset from the side and top edges
   const hr = c.wallHoleDiameter / 2;
-  const holeCentres = [[c.wallHoleInset, H - c.wallHoleInset], [W - c.wallHoleInset, H - c.wallHoleInset]];
+  const holeCentres = [[c.wallHoleInset, H - c.wallHoleInset], [Ww - c.wallHoleInset, H - c.wallHoleInset]];
   const wallHoles = holeCentres.map(([hy, hz]) =>
     createCircle(hr, c.wallHoleSegments).map(([y, z]) => [hy + y, hz + z]));
   for (const [hy, hz] of holeCentres) {
-    const cornerCentre = hy < W / 2 ? [rw, wallArcBase] : [W - rw, wallArcBase];
-    const inCorner = hz > wallArcBase && (hy < rw || hy > W - rw);
+    const cornerCentre = hy < Ww / 2 ? [rw, wallArcBase] : [Ww - rw, wallArcBase];
+    const inCorner = hz > wallArcBase && (hy < rw || hy > Ww - rw);
     const clearOfCorner = !inCorner || Math.hypot(hy - cornerCentre[0], hz - cornerCentre[1]) + hr + c.minSlotWall <= rw;
-    if (hy - hr < c.minSlotWall || hy + hr > W - c.minSlotWall || hz + hr > H - c.minSlotWall ||
+    if (hy - hr < c.minSlotWall || hy + hr > Ww - c.minSlotWall || hz + hr > H - c.minSlotWall ||
         hz - hr < T + c.minSlotWall || !clearOfCorner) {
       throw new Error('Wall fixing holes do not fit with these dimensions');
     }
@@ -262,17 +264,16 @@ export function createFocusMotorMountMesh(customConfig = {}) {
       [y1 - y0, x0 - x1, 0]
     );
   }
-  // Long side faces carry the L-shaped profile (plate + wall)
-  const profile = y => [
-    [rc, y, 0], [L - rc, y, 0], [L - rc, y, T], [w1, y, T], [w1, y, wallArcBase], [w0, y, wallArcBase], [w0, y, T], [rc, y, T]
-  ];
-  polyFace(profile(0), [0, -1, 0]);
-  polyFace(profile(W), [0, 1, 0]);
+  // Long side faces: y = 0 carries the L-shaped profile (plate + wall), y = W is the plain plate edge
+  polyFace(dedup([
+    [rBL, 0, 0], [L - rBR, 0, 0], [L - rBR, 0, T], [w1, 0, T], [w1, 0, wallArcBase], [w0, 0, wallArcBase], [w0, 0, T], [rBL, 0, T]
+  ]), [0, -1, 0]);
+  polyFace([[rTL, W, 0], [L - rTR, W, 0], [L - rTR, W, T], [rTL, W, T]], [0, 1, 0]);
 
   // Wall faces (x = w0 and x = w1): rectangle with rounded top corners and the fixing holes, outline in (y, z)
   const wallOutline = [
-    [0, T], [W, T],
-    ...arcPoints(W - rw, wallArcBase, rw, 0, 90, cornerSegments),
+    [0, T], [Ww, T],
+    ...arcPoints(Ww - rw, wallArcBase, rw, 0, 90, cornerSegments),
     ...arcPoints(rw, wallArcBase, rw, 90, 180, cornerSegments)
   ];
   const wallFace = (x, outward) => {
@@ -281,6 +282,8 @@ export function createFocusMotorMountMesh(customConfig = {}) {
   };
   wallFace(w0, [-1, 0, 0]);
   wallFace(w1, [1, 0, 0]);
+  // Wall end face at y = Ww (the straight part below the rounded top corner)
+  polyFace([[w0, Ww, T], [w1, Ww, T], [w1, Ww, wallArcBase], [w0, Ww, wallArcBase]], [0, 1, 0]);
   // Hole walls: faces point toward the hole centre (away from the solid)
   for (const [hy, hz] of holeCentres) {
     const ring = createCircle(hr, c.wallHoleSegments).map(([y, z]) => [hy + y, hz + z]);
@@ -294,9 +297,9 @@ export function createFocusMotorMountMesh(customConfig = {}) {
     }
   }
   // Wall top and the curved strips of the rounded corners between the two faces
-  polyFace([[w0, rw, H], [w1, rw, H], [w1, W - rw, H], [w0, W - rw, H]], [0, 0, 1]);
+  polyFace([[w0, rw, H], [w1, rw, H], [w1, Ww - rw, H], [w0, Ww - rw, H]], [0, 0, 1]);
   const wallArcs = [
-    arcPoints(W - rw, wallArcBase, rw, 0, 90, cornerSegments),
+    arcPoints(Ww - rw, wallArcBase, rw, 0, 90, cornerSegments),
     arcPoints(rw, wallArcBase, rw, 90, 180, cornerSegments)
   ];
   for (const arc of wallArcs) {
@@ -310,15 +313,6 @@ export function createFocusMotorMountMesh(customConfig = {}) {
     }
   }
 
-  // Plate top, right of the wall, with slot openings
-  const rightRegion = [
-    [w1, 0],
-    ...arcPoints(L - rc, rc, rc, -90, 0, cornerSegments),
-    ...arcPoints(L - rc, W - rc, rc, 0, 90, cornerSegments),
-    [w1, W]
-  ];
-  flatFace(rightRegion, outlines, T, [0, 0, 1]);
-
   // Slot walls: the solid lies to the right of each CCW outline edge, so faces point left (into the slot)
   for (const outline of [...outlines, baseHoleOutline]) {
     for (let i = 0; i < outline.length; i++) {
@@ -331,24 +325,9 @@ export function createFocusMotorMountMesh(customConfig = {}) {
     }
   }
 
-  // Plate top, left of the wall, with the stud footprint cut out
-  const ring = createCircle(sr, c.studSegments).map(([x, y]) => [sx + x, sy + y]);
-  const leftRegion = [
-    ...arcPoints(rc, W - rc, rc, 90, 180, cornerSegments),
-    ...arcPoints(rc, rc, rc, 180, 270, cornerSegments),
-    [w0, 0], [w0, W]
-  ];
-  flatFace(leftRegion, [ring, baseHoleOutline], T, [0, 0, 1]);
-
-  // Stud wall and cap
-  const n = ring.length;
-  for (let i = 0; i < n; i++) {
-    const [x0, y0] = ring[i];
-    const [x1, y1] = ring[(i + 1) % n];
-    const mid = [(x0 + x1) / 2 - sx, (y0 + y1) / 2 - sy, 0];
-    addFace([[[x0, y0, T], [x1, y1, T], [x1, y1, sTop]], [[x0, y0, T], [x1, y1, sTop], [x0, y0, sTop]]], mid);
-    addFace([[[sx, sy, sTop], [x0, y0, sTop], [x1, y1, sTop]]], [0, 0, 1]);
-  }
+  // Plate top: the plan outline with the wall footprint notched out of the Y = 0 edge, plus slot and hole openings
+  const topOutline = dedup([[w1, 0], ...arcBR, ...arcTR, ...arcTL, ...arcBL, [w0, 0], [w0, Ww], [w1, Ww]]);
+  flatFace(topOutline, [...outlines, baseHoleOutline], T, [0, 0, 1]);
 
   return trianglesToMesh(tris);
 }
@@ -360,10 +339,8 @@ export function focusMotorMountDimensions(customConfig = {}) {
   const W = c.plateWidth;
   const T = c.plateThickness;
   const H = T + c.wallHeight;
-  const sx = c.studFromShortEdge;
-  const sy = c.studFromLongEdge;
-  const sr = c.studDiameter / 2;
-  const wallMid = sx + c.wallOffsetFromStud;
+  const wallMid = c.wallCentreX;
+  const Ww = c.wallWidth;
   const w0 = wallMid - c.wallThickness / 2;
   const w1 = wallMid + c.wallThickness / 2;
   const f = v => `${parseFloat(v.toFixed(2))}`;
@@ -378,16 +355,13 @@ export function focusMotorMountDimensions(customConfig = {}) {
     { label: f(W), from: [L, 0, 0], to: [L, W, 0], offset: [8, 0, 0] },
     { label: f(T), from: [L, W, 0], to: [L, W, T], offset: [0, 8, 0], labelLift: 3 },
     { label: f(H), from: [0, 0, 0], to: [0, 0, H], offset: [-8, 0, 0] },
-    { label: `${f(c.studHeight)}`, from: [sx - sr, sy, T], to: [sx - sr, sy, T + c.studHeight], offset: [-6, 0, 0] },
-    { label: `Ø${f(c.studDiameter)}`, from: [sx, sy - sr, H], to: [sx, sy + sr, H], offset: [0, -9, 0] },
-    { label: f(sx), from: [0, sy, T], to: [sx, sy, T], offset: [0, 0, 0], labelLift: 2.5 },
-    { label: f(sy), from: [sx, 0, T], to: [sx, sy, T], offset: [0, 0, 0], labelLift: 2.5 },
-    { label: f(c.wallOffsetFromStud), from: [sx, sy, H], to: [wallMid, sy, H], offset: [0, 0, 6] },
-    { label: f(c.wallThickness), from: [w0, W, H], to: [w1, W, H], offset: [0, 8, 0] },
-    { label: f(c.wallHeight), from: [w1, W, T], to: [w1, W, H], offset: [8, 0, 0] },
+    { label: f(wallMid), from: [0, Ww, H], to: [wallMid, Ww, H], offset: [0, 0, 6] },
+    { label: f(Ww), from: [w1, 0, H], to: [w1, Ww, H], offset: [4, 0, 6] },
+    { label: f(c.wallThickness), from: [w0, Ww, H], to: [w1, Ww, H], offset: [0, 8, 0] },
+    { label: f(c.wallHeight), from: [w1, Ww, T], to: [w1, Ww, H], offset: [8, 0, 0] },
     { label: f(c.wallHoleInset), from: [w1, 0, H - c.wallHoleInset], to: [w1, c.wallHoleInset, H - c.wallHoleInset], offset: [4, 0, 0] },
     { label: f(c.wallHoleInset), from: [w1, c.wallHoleInset, H], to: [w1, c.wallHoleInset, H - c.wallHoleInset], offset: [4, 0, 0] },
-    { label: `Ø${f(c.wallHoleDiameter)}`, from: [w1, W - c.wallHoleInset - c.wallHoleDiameter / 2, H - c.wallHoleInset], to: [w1, W - c.wallHoleInset + c.wallHoleDiameter / 2, H - c.wallHoleInset], offset: [4, 0, 6] },
+    { label: `Ø${f(c.wallHoleDiameter)}`, from: [w1, Ww - c.wallHoleInset - c.wallHoleDiameter / 2, H - c.wallHoleInset], to: [w1, Ww - c.wallHoleInset + c.wallHoleDiameter / 2, H - c.wallHoleInset], offset: [4, 0, 6] },
     { label: f(baseHole.x), from: [0, baseHole.y, T], to: [baseHole.x, baseHole.y, T], offset: [0, 0, 0], labelLift: 2.5 },
     { label: `Ø${f(c.baseHoleDiameter)}`, from: [baseHole.x - c.baseHoleDiameter / 2, baseHole.y, T], to: [baseHole.x + c.baseHoleDiameter / 2, baseHole.y, T], offset: [0, 0, 8] },
     { label: f(c.slotStartFromStudEnd), from: [0, W, T], to: [c.slotStartFromStudEnd, W, T], offset: [0, 16, 0] },
@@ -437,8 +411,8 @@ export function generateFocusMotorMount(customConfig = {}) {
   console.log(`  3D PRINTER PART GENERATOR: ${config.name.toUpperCase()}`);
   console.log(`======================================================`);
   console.log(`  - Plate:             ${config.plateLength} x ${config.plateWidth} x ${config.plateThickness} mm`);
-  console.log(`  - Stud:              Ø${config.studDiameter} x ${config.studHeight} mm at X=${config.studFromShortEdge}, Y=${config.studFromLongEdge}`);
-  console.log(`  - Wall:              ${config.wallThickness} x ${config.plateWidth} x ${config.wallHeight} mm, centre ${config.wallOffsetFromStud} mm from stud`);
+  console.log(`  - Wall:              ${config.wallThickness} x ${config.wallWidth} x ${config.wallHeight} mm, centre X=${config.wallCentreX}, on the Y=0 side`);
+  console.log(`  - Plate corners:     R${config.plateCornerRadius}, except R${config.highSlotCornerRadius} at the high-slot corner (X=${config.plateLength}, Y=${config.plateWidth}) and R${config.originCornerRadius} at the origin corner (X=0, Y=0)`);
   const layout = slotLayout(config);
   console.log(`  - Motor twist:       ${layout.twistDeg.toFixed(1)}° (bolts ${config.motorBoltSpacing} mm, slots ${config.screwSpacing} mm apart); shaft shifts ${layout.shaftShiftY.toFixed(2)} mm in Y; motor travel ${layout.travel.toFixed(2)} mm`);
   for (const s of layout.slots) {
@@ -463,19 +437,18 @@ function parseArgs() {
     '--length': 'plateLength',
     '--width': 'plateWidth',
     '--thickness': 'plateThickness',
-    '--stud-dia': 'studDiameter',
-    '--stud-height': 'studHeight',
-    '--stud-from-long-edge': 'studFromLongEdge',
-    '--stud-from-short-edge': 'studFromShortEdge',
     '--wall-thickness': 'wallThickness',
     '--wall-height': 'wallHeight',
-    '--wall-offset': 'wallOffsetFromStud',
+    '--wall-width': 'wallWidth',
+    '--wall-centre': 'wallCentreX',
     '--slot-start': 'slotStartFromStudEnd',
     '--slot-end': 'slotEndFromStudEnd',
     '--screw-spacing': 'screwSpacing',
     '--screw-slot-width': 'screwSlotWidth',
     '--spindle-slot-width': 'spindleSlotWidth',
     '--corner-radius': 'plateCornerRadius',
+    '--high-slot-corner-radius': 'highSlotCornerRadius',
+    '--origin-corner-radius': 'originCornerRadius',
     '--wall-corner-radius': 'wallCornerRadius',
     '--motor-bolt-spacing': 'motorBoltSpacing',
     '--shaft-offset': 'motorShaftOffset'

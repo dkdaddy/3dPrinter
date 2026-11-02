@@ -8,7 +8,7 @@ import { read3MF, load3MFMesh } from '../src/utils/threemf.js';
 import { computeMeshVolumeAndArea } from '../src/utils/mesh.js';
 
 describe('focus motor mount', () => {
-  it('builds a watertight 70 x 40 plate with stud and wall', () => {
+  it('builds a watertight 70 x 40 plate with a half-width wall and no stud', () => {
     const outputPath = path.join(os.tmpdir(), 'focus-motor-mount-test.3mf');
     const { stats } = generateFocusMotorMount({ outputPath });
 
@@ -20,33 +20,30 @@ describe('focus motor mount', () => {
     assert.equal(reloaded.faces.length, stats.triangles);
   });
 
-  it('has the expected volume (plate + wall + stud - slots) and positive orientation', () => {
+  it('has the expected volume (plate + wall - slots - holes - rounded corners) and positive orientation', () => {
     const mesh = createFocusMotorMountMesh();
     const { volume } = computeMeshVolumeAndArea(mesh);
-    const stud = Math.PI * 4.15 * 4.15 * 10;
     const slotArea = ({ x0, x1, width: w }) => (x1 - x0 - w) * w + Math.PI * (w / 2) ** 2;
     const slots = slotLayout().slots.reduce((sum, s) => sum + slotArea(s), 0) * 3;
     const wallHoles = 2 * Math.PI * 2 ** 2 * 3;
     const baseHole = Math.PI * 2 ** 2 * 3;
-    const roundedCorner = (1 - Math.PI / 4) * 6 * 6; // area removed per 6mm-radius corner
-    const corners = 4 * roundedCorner * 3 + 2 * roundedCorner * 3;
+    const roundedCorner = r => (1 - Math.PI / 4) * r * r * 3;
+    const corners = 2 * roundedCorner(20) + 2 * roundedCorner(6);
+    const wallCorners = 2 * (1 - Math.PI / 4) * 6 * 6 * 3; // 6mm top corners of the wall
     // polygonal circles are slightly under the true area
-    const expected = 70 * 40 * 3 + 3 * 40 * 15 + stud - slots - corners - wallHoles - baseHole;
+    const expected = 70 * 40 * 3 + 3 * 20 * 15 - slots - corners - wallCorners - wallHoles - baseHole;
     assert.equal(volume > 0, true);
     assert.equal(Math.abs(volume - expected) / expected < 0.005, true);
   });
 
-  it('places the stud 10mm / 10mm from the edges and the wall centre 11.5mm from it', () => {
+  it('has no stud and puts the 3mm wall centred 21.5mm from the short edge on the Y = 0 side, 20mm wide', () => {
     const mesh = createFocusMotorMountMesh();
-    const studTop = mesh.vertices.filter(v => v[2] === 13 && v[0] < 20);
-    const cx = studTop.reduce((s, v) => s + v[0], 0) / studTop.length;
-    const cy = studTop.reduce((s, v) => s + v[1], 0) / studTop.length;
-    assert.equal(Math.abs(cx - 10) < 1e-6 && Math.abs(cy - 10) < 1e-6, true);
-    const studR = Math.max(...studTop.map(v => Math.hypot(v[0] - cx, v[1] - cy)));
-    assert.equal(Math.abs(studR - 4.15) < 1e-6, true);
-    const wallX = [...new Set(mesh.vertices.filter(v => v[2] === 18 && v[0] > 15).map(v => v[0]))].sort((a, b) => a - b);
+    assert.equal(mesh.vertices.some(v => v[2] > 3 && v[0] < 19), false);
+    const wallX = [...new Set(mesh.vertices.filter(v => v[2] === 18).map(v => v[0]))].sort((a, b) => a - b);
     assert.deepEqual(wallX, [20, 23]);
-    assert.equal(Math.abs((wallX[0] + wallX[1]) / 2 - cx - 11.5) < 1e-6, true);
+    const wallY = mesh.vertices.filter(v => v[2] > 3);
+    assert.equal(Math.min(...wallY.map(v => v[1])), 0);
+    assert.equal(Math.max(...wallY.map(v => v[1])), 20);
   });
 
   it('cuts staggered slots that follow the motor twisted to fit 35mm bolts into 30mm slots', () => {
@@ -100,14 +97,14 @@ describe('focus motor mount', () => {
     assert.equal(createFocusMotorMountMesh({ shaftSide: 'far', lowYBoltToward: 'far' }).faces.length > 0, true);
   });
 
-  it('drills two 4mm fixing holes through the wall, 8mm in from the side and top edges', () => {
+  it('drills two 4mm fixing holes through the wall, 5mm in from the side and top edges', () => {
     const mesh = createFocusMotorMountMesh();
     const near = (a, b) => Math.abs(a - b) < 1e-6;
     for (const wx of [20, 23]) {
-      for (const hy of [8, 32]) {
-        const ring = mesh.vertices.filter(v => near(v[0], wx) && Math.hypot(v[1] - hy, v[2] - 10) < 2.1);
+      for (const hy of [5, 15]) {
+        const ring = mesh.vertices.filter(v => near(v[0], wx) && Math.hypot(v[1] - hy, v[2] - 13) < 2.1);
         assert.equal(ring.length, 32, `hole at y=${hy}, x=${wx}`);
-        for (const v of ring) assert.equal(near(Math.hypot(v[1] - hy, v[2] - 10), 2), true);
+        for (const v of ring) assert.equal(near(Math.hypot(v[1] - hy, v[2] - 13), 2), true);
       }
     }
   });
@@ -116,7 +113,7 @@ describe('focus motor mount', () => {
     const near = (a, b, tol = 1e-6) => Math.abs(a - b) < tol;
     const hole = baseHolePosition();
     assert.equal(near(hole.x, 10) && near(hole.y, 20), true);
-    assert.equal(hole.studGap >= 1 && hole.wallGap >= 1, true);
+    assert.equal(hole.wallGap >= 1, true);
 
     const mesh = createFocusMotorMountMesh();
     for (const z of [0, 3]) {
@@ -124,17 +121,17 @@ describe('focus motor mount', () => {
       assert.equal(ring.length, 32, `z=${z}`);
       for (const v of ring) assert.equal(near(Math.hypot(v[0] - 10, v[1] - 20), 2), true);
     }
-    assert.throws(() => createFocusMotorMountMesh({ baseHoleDiameter: 12 })); // would touch the stud
+    assert.throws(() => createFocusMotorMountMesh({ baseHoleDiameter: 20 })); // would touch the wall
     assert.throws(() => createFocusMotorMountMesh({ baseHoleFromStudEnd: 2 }));
   });
 
   it('rejects wall holes that do not fit', () => {
     assert.throws(() => createFocusMotorMountMesh({ wallHoleInset: 2 }));
-    assert.throws(() => createFocusMotorMountMesh({ wallHoleInset: 18 }));
+    assert.throws(() => createFocusMotorMountMesh({ wallHoleInset: 9 })); // holes would overlap
     assert.throws(() => createFocusMotorMountMesh({ wallHoleDiameter: 16 }));
   });
 
-  it('rounds the plate corners and the top corners of the wall with a 6mm radius', () => {
+  it('rounds the plate corners (R20, R6 at the high-slot corner) and the top corners of the wall (R6)', () => {
     const mesh = createFocusMotorMountMesh();
     const near = (a, b) => Math.abs(a - b) < 1e-6;
     const has = (x, y, z) => mesh.vertices.some(v => near(v[0], x) && near(v[1], y) && near(v[2], z));
@@ -142,18 +139,23 @@ describe('focus motor mount', () => {
       assert.equal(has(cx, cy, 0), false);
       assert.equal(has(cx, cy, 3), false);
     }
-    assert.equal(has(6, 0, 0) && has(0, 6, 0) && has(64, 0, 0) && has(70, 34, 3), true);
+    assert.equal(has(50, 0, 0) && has(70, 20, 0) && has(20, 40, 0) && has(0, 20, 3), true);
+    // the high-slot corner (70, 40) and the diagonal origin corner (0, 0) keep the 6mm radius
+    assert.equal(has(64, 40, 0) && has(70, 34, 3) && has(6, 0, 0) && has(0, 6, 3), true);
+    // every arc vertex of the top-left 20mm corner lies on its circle
+    const arc20 = mesh.vertices.filter(v => v[0] < 20 && v[1] > 22 && v[2] === 0);
+    for (const v of arc20) assert.equal(near(Math.hypot(v[0] - 20, v[1] - 20), 20) || near(v[0], 0), true);
+    const arc6 = mesh.vertices.filter(v => v[0] < 6 && v[1] < 6 && v[2] === 0);
+    for (const v of arc6) assert.equal(near(Math.hypot(v[0] - 6, v[1] - 6), 6) || near(v[0], 0) || near(v[1], 0), true);
     // wall: straight up to 12mm, then a 6mm arc to the flat top
     assert.equal(has(20, 0, 18) || has(23, 0, 18), false);
-    assert.equal(has(20, 0, 12) && has(23, 40, 12) && has(20, 6, 18) && has(23, 34, 18), true);
-    // every arc vertex lies on the 6mm circle
-    const arc = mesh.vertices.filter(v => v[0] < 6 && v[1] < 6 && v[2] === 0);
-    for (const v of arc) assert.equal(near(Math.hypot(v[0] - 6, v[1] - 6), 6) || near(v[0], 0) || near(v[1], 0), true);
+    assert.equal(has(20, 0, 12) && has(23, 20, 12) && has(20, 6, 18) && has(23, 14, 18), true);
   });
 
   it('rejects corner radii that do not fit', () => {
-    assert.throws(() => createFocusMotorMountMesh({ plateCornerRadius: 25 }));
-    assert.throws(() => createFocusMotorMountMesh({ wallCornerRadius: 21 }));
+    assert.throws(() => createFocusMotorMountMesh({ plateCornerRadius: 35 }));
+    assert.throws(() => createFocusMotorMountMesh({ highSlotCornerRadius: 21 }));
+    assert.throws(() => createFocusMotorMountMesh({ wallCornerRadius: 11 }));
   });
 
   it('writes a dimensions sidecar for the viewer overlay', () => {
@@ -161,11 +163,12 @@ describe('focus motor mount', () => {
     generateFocusMotorMount({ outputPath });
     const { dimensions } = JSON.parse(fs.readFileSync(outputPath.replace(/\.3mf$/, '.dims.json'), 'utf8'));
     const labels = dimensions.map(d => d.label);
-    for (const l of ['70', '40', '18', '11.5', 'Ø8.3', '10', '30', '24', '27.41', '19.41', '5', '5.15', '12', '8', 'Ø4']) assert.equal(labels.includes(l), true, l);
+    for (const l of ['70', '40', '18', '21.5', '20', '30', '24', '27.41', '19.41', '5', '5.15', '12', 'Ø4']) assert.equal(labels.includes(l), true, l);
   });
 
-  it('rejects dimensions where the stud would overlap the wall', () => {
-    assert.throws(() => createFocusMotorMountMesh({ wallOffsetFromStud: 5 }));
+  it('rejects a wall that does not fit on the plate', () => {
+    assert.throws(() => createFocusMotorMountMesh({ wallWidth: 45 }));
+    assert.throws(() => createFocusMotorMountMesh({ wallCentreX: 65 }));
   });
 
   it('rejects slots that do not fit on the plate', () => {
