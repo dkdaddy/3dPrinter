@@ -155,7 +155,7 @@
       <div class="card-title">Part Information</div>
       <div class="stat-row">
         <span class="stat-label">File Name</span>
-        <span class="stat-val" id="stat-name">small-gearwheel.stl</span>
+        <span class="stat-val" id="stat-name">focus-wheel.3mf</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Dimensions (XYZ)</span>
@@ -197,6 +197,7 @@
         <button class="toggle-btn" id="btn-wireframe" onclick="toggleWireframe()">Wireframe</button>
         <button class="toggle-btn active" id="btn-rotate" onclick="toggleRotate()">Auto Rotate</button>
         <button class="toggle-btn active" id="btn-grid" onclick="toggleGrid()">Print Bed</button>
+        <button class="toggle-btn active" id="btn-dims" onclick="toggleDimensions()">Dimensions</button>
         <button class="toggle-btn" onclick="resetCamera()">Reset View</button>
       </div>
     </div>
@@ -210,6 +211,117 @@
     let scene, camera, renderer, controls, currentMesh, gridHelper;
     let autoRotate = true;
     let wireframe = false;
+    let showDimensions = true;
+    let dimensionGroup = null;
+    let currentSize = [0, 0, 0];
+
+    function makeLabel(text, height) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const font = 'bold 48px Segoe UI, Arial, sans-serif';
+      ctx.font = font;
+      const w = Math.ceil(ctx.measureText(text).width) + 32;
+      canvas.width = w;
+      canvas.height = 72;
+      ctx.font = font;
+      ctx.fillStyle = 'rgba(17, 20, 26, 0.85)';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.rect(2, 2, w - 4, 68);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fde68a';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 16, 38);
+      const texture = new THREE.CanvasTexture(canvas);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }));
+      sprite.scale.set(height * (w / 72), height, 1);
+      sprite.renderOrder = 10;
+      return sprite;
+    }
+
+    // Dimension coordinates are in mm relative to the model's minimum corner (matches the part generators).
+    // Each entry: { from, to, offset, label, labelLift } - the dimension line is drawn at from/to + offset.
+    function buildDimensions(dims) {
+      const [sx, sy] = currentSize;
+      const maxDim = Math.max(...currentSize);
+      const labelHeight = Math.max(2, maxDim * 0.05);
+      const color = 0xfbbf24;
+      const group = new THREE.Group();
+      const toLocal = (p) => new THREE.Vector3(p[0] - sx / 2, p[1] - sy / 2, p[2]);
+      const lineMaterial = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true });
+
+      for (const d of dims) {
+        const off = d.offset || [0, 0, 0];
+        const a = toLocal(d.from);
+        const b = toLocal(d.to);
+        const a2 = a.clone().add(new THREE.Vector3(...off));
+        const b2 = b.clone().add(new THREE.Vector3(...off));
+        const mid = a2.clone().add(b2).multiplyScalar(0.5);
+
+        const addLine = (p, q) => {
+          const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p, q]), lineMaterial);
+          line.renderOrder = 9;
+          group.add(line);
+        };
+        if (a2.distanceTo(a) > 1e-6) addLine(a, a2);
+        if (b2.distanceTo(b) > 1e-6) addLine(b, b2);
+
+        const length = a2.distanceTo(b2);
+        const dir = b2.clone().sub(a2).normalize();
+        const head = Math.min(labelHeight * 0.5, length * 0.3);
+        for (const [origin, direction] of [[mid, dir.clone().negate()], [mid, dir]]) {
+          const arrow = new THREE.ArrowHelper(direction, origin, length / 2, color, head, head * 0.5);
+          arrow.line.material.depthTest = false;
+          arrow.cone.material.depthTest = false;
+          arrow.line.renderOrder = 9;
+          arrow.cone.renderOrder = 9;
+          group.add(arrow);
+        }
+
+        const label = makeLabel(d.label, labelHeight);
+        label.position.copy(mid).add(new THREE.Vector3(0, 0, d.labelLift || 0));
+        group.add(label);
+      }
+      return group;
+    }
+
+    function applyDimensions(dims) {
+      if (!currentMesh) return;
+      if (dimensionGroup) currentMesh.remove(dimensionGroup);
+      dimensionGroup = buildDimensions(dims);
+      dimensionGroup.visible = showDimensions;
+      currentMesh.add(dimensionGroup);
+    }
+
+    function boundingBoxDimensions() {
+      const [x, y, z] = currentSize;
+      const gap = Math.max(x, y, z) * 0.12;
+      const fmt = (v) => `${parseFloat(v.toFixed(2))}`;
+      return [
+        { from: [0, 0, 0], to: [x, 0, 0], offset: [0, -gap, 0], label: fmt(x) },
+        { from: [x, 0, 0], to: [x, y, 0], offset: [gap, 0, 0], label: fmt(y) },
+        { from: [0, 0, 0], to: [0, 0, z], offset: [-gap, 0, 0], label: fmt(z) }
+      ];
+    }
+
+    async function loadSidecarDimensions(target) {
+      const url = target.replace(/\.(3mf|stl)$/i, '.dims.json');
+      if (url === target) return;
+      try {
+        const response = await fetch(url);
+        if (response.ok) applyDimensions((await response.json()).dimensions);
+      } catch (err) {
+        // No sidecar: the bounding-box dimensions stay.
+      }
+    }
+
+    function toggleDimensions() {
+      showDimensions = !showDimensions;
+      if (dimensionGroup) dimensionGroup.visible = showDimensions;
+      document.getElementById('btn-dims').classList.toggle('active', showDimensions);
+    }
 
     function init() {
       const container = document.getElementById('viewport');
@@ -324,6 +436,7 @@
       const sizeX = (bbox.max.x - bbox.min.x).toFixed(1);
       const sizeY = (bbox.max.y - bbox.min.y).toFixed(1);
       const sizeZ = (bbox.max.z - bbox.min.z).toFixed(1);
+      currentSize = [bbox.max.x - bbox.min.x, bbox.max.y - bbox.min.y, bbox.max.z - bbox.min.z];
 
       // Place part sitting upright on print bed
       geometry.translate(0, 0, (bbox.max.z - bbox.min.z) / 2);
@@ -339,6 +452,8 @@
       currentMesh = new THREE.Mesh(geometry, material);
       currentMesh.rotation.x = -Math.PI / 2; // Three.js Y-up -> STL Z-up
       scene.add(currentMesh);
+      dimensionGroup = null;
+      applyDimensions(boundingBoxDimensions());
 
       // Update UI stats
       const triCount = geometry.attributes.position.count / 3;
@@ -490,12 +605,13 @@
 
     async function loadDefaultGear() {
       // Optional ?file=../output/part.3mf (or .stl) to preload a model when served over HTTP
-      const target = new URLSearchParams(location.search).get('file') || '../output/small-gearwheel.stl';
+      const target = new URLSearchParams(location.search).get('file') || '../output/focus-wheel.3mf';
       try {
         const response = await fetch(target);
         if (response.ok) {
           const buffer = await response.arrayBuffer();
           await loadModelBuffer(buffer, target.split('/').pop());
+          await loadSidecarDimensions(target);
         }
       } catch (err) {
         // Fallback: If opening as local file without web server, prompt user to load file

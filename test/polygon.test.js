@@ -56,4 +56,18 @@ describe('polygon utilities', () => {
     const expectedArea = Math.abs(polygonArea(outer)) - Math.abs(polygonArea(hole));
     assert.equal(Math.abs(totalTriArea - expectedArea) < 1e-6, true);
   });
+
+  it('triangulates several holes sharing the same rightmost x', () => {
+    const outer = [[0, 0], [70, 0], [70, 40], [0, 40]];
+    const holes = [2.5, 20, 37.5].map(cy => createCircle(2, 24).map(([x, y]) => [x + 40, y + cy]));
+    const { vertices, triangles } = triangulatePolygonWithHoles(outer, holes);
+
+    let total = 0;
+    for (const [i0, i1, i2] of triangles) {
+      const [a, b, c] = [vertices[i0], vertices[i1], vertices[i2]];
+      total += ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) * 0.5;
+    }
+    const expected = 70 * 40 - holes.reduce((s, h) => s + Math.abs(polygonArea(h)), 0);
+    assert.equal(Math.abs(total - expected) < 1e-6, true);
+  });
 });

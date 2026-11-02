@@ -1,33 +1,13 @@
-﻿# 3D Printer Parts Utilities & Parametric STL Generator
+﻿# 3D Printer Parts Utilities & Parametric 3MF Generator
 
-A modular JavaScript / Node.js toolkit for procedurally generating 3D printable mechanical parts and exporting clean, watertight binary STL files.
+A modular JavaScript / Node.js toolkit for procedurally generating 3D printable mechanical parts and exporting clean, watertight 3MF files.
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Generate the Small Toothed Gearwheel
-Run the default gear generator (generates `output/small-gearwheel.stl`):
-```bash
-npm run build:gear
-```
-or run Node directly:
-```bash
-node src/parts/gearwheel/index.js
-```
-
-### 2. Generate with Custom CLI Parameters
-Customize teeth, module, height, shaft bore, or motor flat:
-```bash
-# 14-tooth pinion, 2.0mm module, 8mm thick, 5mm D-shaft motor bore
-node src/parts/gearwheel/index.js --teeth 14 --module 2.0 --height 8 --bore 5.0 --bore-type d-shaft
-
-# 24-tooth gear with an 11mm collar hub for set-screw mounting
-node src/parts/gearwheel/index.js --teeth 24 --module 1.5 --height 7 --hub-dia 11 --hub-height 5
-```
-
-### 3. Generate the Focus Wheel
-Diamond-knurled 38mm x 8mm wheel with rounded outer edges and a hole shaped like a 20-tooth GT2 pulley (12.22mm tip diameter by default) for a push fit (`output/focus-wheel.stl`):
+### 1. Generate the Focus Wheel
+Diamond-knurled 38mm x 8mm wheel with rounded outer edges and a hole shaped like a 20-tooth GT2 pulley (12.22mm tip diameter by default) for a push fit (`output/focus-wheel.3mf`):
 ```bash
 npm run build:focus-wheel
 # options: --diameter --width --knurls --knurl-depth --knurl-style (diamond|straight) --edge-radius --teeth --pitch --tip-dia --clearance
@@ -35,17 +15,24 @@ node src/parts/focus-wheel/index.js --tip-dia 12.6 --clearance 0.15
 ```
 Increase `--clearance` (radial mm, default 0.1) if too tight, decrease if loose.
 
-### 4. Generate All Registered Parts
+### 1b. Generate the Belt Gear
+42-tooth GT2 gear (26.2mm tip diameter) with 2mm-thick flanges on each side (1.2mm taller than the tooth tips), 18mm wide overall (14mm belt channel). The bore is the 20T GT2 push-fit shape for the first 10mm (z=0 end), then a plain 16.1mm round bore for the remaining 8mm (`output/focus-belt-gear.3mf`):
+```bash
+npm run build:focus-belt-gear
+# options: --teeth --pitch --tip-dia --width --flange --flange-oversize --pinion-teeth --pinion-tip-dia --clearance --toothed-bore --bore-dia
+```
+
+### 2. Generate All Registered Parts
 ```bash
 npm run build:all
 ```
 
-### 4. Run Automated Test Suite
+### 3. Run Automated Test Suite
 ```bash
 npm test
 ```
 
-### 5. Work with 3MF Files
+### 4. Work with 3MF Files
 Inspect an existing 3MF (including Bambu Studio / Orca project files) and optionally export a merged STL preview:
 ```bash
 node scripts/inspect-3mf.js models/my-part.3mf --stl output/preview.stl
@@ -56,28 +43,8 @@ node scripts/resize-etx-ring.js models/ETX_90_part_1_SV165_adapter_2.3mf output/
 ```
 See [`notes/etx105-adapter.md`](notes/etx105-adapter.md) for measurements, assumptions and print settings.
 
-### 6. Inspect 3D Models in the Interactive Viewer
-Open [`viewer/index.html`](file:///C:/Users/bobco/code/3dPrinter/viewer/index.html) in your browser. Drag and drop any `.stl` or `.3mf` file (or serve the repo over HTTP and open `viewer/index.html?file=../models/my-part.3mf`) to rotate, zoom, toggle wireframe, and inspect print dimensions.
-
----
-
-## ⚙️ First Part: Small Toothed Gearwheel
-
-The first part is an involute spur gear designed specifically for 3D printing (FDM and SLA):
-
-| Parameter | Default Value | Description |
-| :--- | :--- | :--- |
-| **Teeth ($z$)** | `16` | Number of gear teeth |
-| **Module ($m$)** | `1.5 mm` | Metric gear module ($d = m \cdot z$) |
-| **Pitch Diameter** | `24.00 mm` | Standard pitch circle diameter |
-| **Outer (Tip) Diameter** | `26.54 mm` | Addendum diameter at tooth tips |
-| **Root Diameter** | `20.55 mm` | Dedendum circle diameter |
-| **Face Width (Height)** | `7.00 mm` | Thickness along the Z-axis |
-| **Shaft Bore** | `5.00 mm` | Center bore for NEMA 17 stepper or 5mm shaft |
-| **Bore Style** | `round` | Options: `'round'`, `'d-shaft'`, or `none` |
-| **Backlash** | `0.20 mm` | Tooth thinning clearance for 3D printing tolerance |
-| **Watertight** | **YES** | Solid 2-manifold closed mesh |
-| **Est. Weight (PLA)** | `3.53 g` | Estimated filament consumption |
+### 5. Inspect 3D Models in the Interactive Viewer
+Open [`viewer/index.html`](file:///C:/Users/bobco/code/3dPrinter/viewer/index.html) in your browser. Drag and drop any `.stl` or `.3mf` file (or serve the repo over HTTP and open `viewer/index.html?file=../models/my-part.3mf`) to rotate, zoom, toggle wireframe, and inspect print dimensions. The **Dimensions** button toggles the measurement overlay: overall X/Y/Z for any model, or the part's key dimensions when a `<name>.dims.json` sidecar sits next to the file (written by the focus motor mount generator).
 
 ---
 
@@ -87,14 +54,17 @@ The first part is an involute spur gear designed specifically for 3D printing (F
 3dPrinter/
 ├── package.json               # NPM scripts and project configuration
 ├── README.md                  # Complete documentation and guide
-├── output/                    # Generated .stl files for your slicer
-│   └── small-gearwheel.stl
+├── output/                    # Generated .3mf files for your slicer
+│   └── focus-wheel.3mf
 ├── src/
 │   ├── parts/                 # Individual part scripts
-│   │   └── gearwheel/
-│   │       └── index.js       # Small toothed gearwheel part generator
-│   └── utils/                 # Core 3D geometry and STL utilities
+│   │   └── focus-wheel/
+│   │       └── index.js       # GT2 push-fit focus wheel generator
+│   └── utils/                 # Core 3D geometry, 3MF and STL utilities
 │       ├── index.js           # Public API re-exporting all utilities
+│       ├── threemf.js         # 3MF reader / writer
+│       ├── gt2.js             # GT2 timing pulley profile
+│       ├── knurl.js           # Knurled wheel with rounded edges
 │       ├── stl.js             # Binary & ASCII STL exporter with print stats
 │       ├── gear.js            # Parametric involute gear geometry engine
 │       ├── extrude.js         # 2D polygon with holes -> 3D watertight mesh
@@ -165,7 +135,7 @@ To add a new part to your project:
 ```javascript
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extrude, createRoundedRectangle, createCircle, exportSTL } from '../../utils/index.js';
+import { extrude, createRoundedRectangle, createCircle, export3MF } from '../../utils/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -181,9 +151,10 @@ export function generateMyBracket(options = {}) {
   // 3. Extrude to 3D (4mm thick)
   const mesh = extrude(outer, 4, { holes: [hole1, hole2] });
 
-  // 4. Export to STL
-  const outputPath = path.resolve(__dirname, '../../../output/my-bracket.stl');
-  return exportSTL(outputPath, mesh);
+  // 4. Export to 3MF
+  const outputPath = path.resolve(__dirname, '../../../output/my-bracket.3mf');
+  export3MF(outputPath, mesh, { name: 'my-bracket' });
+  return outputPath;
 }
 
 // Allow direct CLI execution

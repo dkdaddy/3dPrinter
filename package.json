@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/**/*.test.js",
-    "build:gear": "node src/parts/gearwheel/index.js",
     "build:focus-wheel": "node src/parts/focus-wheel/index.js",
+    "build:focus-belt-gear": "node src/parts/focus-belt-gear/index.js",
+    "build:focus-motor-mount": "node src/parts/focus-motor-mount/index.js",
     "build:all": "node scripts/generate-all.js"
   },
   "keywords": [

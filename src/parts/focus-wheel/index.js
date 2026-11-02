@@ -1,6 +1,14 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createKnurledWheelMesh, exportSTL, generateGT2Profile2D } from '../../utils/index.js';
+import {
+  createKnurledWheelMesh,
+  export3MF,
+  generateGT2Profile2D,
+  computeBoundingBox,
+  computeMeshVolumeAndArea,
+  checkWatertight,
+  estimateFilament
+} from '../../utils/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,8 +58,23 @@ export function generateFocusWheel(customConfig = {}) {
     hole
   });
 
-  const outputPath = customConfig.outputPath || path.resolve(__dirname, '../../../output', `${config.name}.stl`);
-  const stats = exportSTL(outputPath, mesh, { name: config.name, ascii: false });
+  const outputPath = customConfig.outputPath || path.resolve(__dirname, '../../../output', `${config.name}.3mf`);
+  export3MF(outputPath, mesh, { name: config.name });
+
+  const bbox = computeBoundingBox(mesh);
+  const { volume } = computeMeshVolumeAndArea(mesh);
+  const filament = estimateFilament(volume);
+  const round2 = v => Math.round(v * 100) / 100;
+  const stats = {
+    filePath: path.resolve(outputPath),
+    fileName: path.basename(outputPath),
+    triangles: mesh.faces.length,
+    vertices: mesh.vertices.length,
+    boundingBox: { widthX: round2(bbox.size[0]), depthY: round2(bbox.size[1]), heightZ: round2(bbox.size[2]) },
+    volumeMm3: filament.volumeMm3,
+    estimatedWeightGrams: filament.weightGrams,
+    isWatertight: checkWatertight(mesh).isWatertight
+  };
 
   console.log(`\n======================================================`);
   console.log(`  3D PRINTER PART GENERATOR: ${config.name.toUpperCase()}`);

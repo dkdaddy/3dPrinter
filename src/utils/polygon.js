@@ -178,6 +178,18 @@ export function triangulateSimplePolygon(points) {
 }
 
 /**
+ * True when point p lies inside the interior wedge at vertex v of a CCW polygon (prev -> v -> next).
+ */
+function inCone(prev, v, next, p) {
+  const left = (a, b, c) => cross2D(a, b, c) > 1e-9;
+  const leftOn = (a, b, c) => cross2D(a, b, c) >= -1e-9;
+  if (leftOn(v, next, prev)) {
+    return left(v, p, prev) && left(p, v, next);
+  }
+  return !(leftOn(v, p, next) && leftOn(p, v, prev));
+}
+
+/**
  * Bridges holes into outer polygon and triangulates the combined polygon.
  * outer: array of [x, y] in CCW order
  * holes: array of arrays of [x, y]
@@ -256,6 +268,19 @@ export function triangulatePolygonWithHoles(outer, holes = []) {
         if (d < minDist) {
           minDist = d;
           bestOuterIdx = i;
+        }
+      }
+    }
+
+    // Bridged holes duplicate vertices; attach at the occurrence whose interior wedge faces the hole
+    if (bestOuterIdx !== -1) {
+      const target = combined[bestOuterIdx];
+      const n = combined.length;
+      for (let j = 0; j < n; j++) {
+        if (!samePoint(combined[j], target)) continue;
+        if (inCone(combined[(j - 1 + n) % n], combined[j], combined[(j + 1) % n], hPt)) {
+          bestOuterIdx = j;
+          break;
         }
       }
     }
