@@ -44,7 +44,7 @@ node scripts/resize-etx-ring.js models/ETX_90_part_1_SV165_adapter_2.3mf output/
 See [`notes/etx105-adapter.md`](notes/etx105-adapter.md) for measurements, assumptions and print settings.
 
 ### 5. Inspect 3D Models in the Interactive Viewer
-Open [`viewer/index.html`](file:///C:/Users/bobco/code/3dPrinter/viewer/index.html) in your browser. Drag and drop any `.stl` or `.3mf` file (or serve the repo over HTTP and open `viewer/index.html?file=../models/my-part.3mf`) to rotate, zoom, toggle wireframe, and inspect print dimensions. The **Dimensions** button toggles the measurement overlay: overall X/Y/Z for any model, or the part's key dimensions when a `<name>.dims.json` sidecar sits next to the file (written by the focus motor mount generator).
+Open [`viewer/index.html`](file:///C:/Users/bobco/code/3dPrinter/viewer/index.html) in your browser. Drag and drop any `.stl` or `.3mf` file (or serve the repo over HTTP and open `viewer/index.html?file=../models/my-part.3mf`, optionally with `&color=red` or `&color=%23d42a2a` to change the model colour) to rotate, zoom, toggle wireframe, and inspect print dimensions. The **Dimensions** button toggles the measurement overlay: overall X/Y/Z for any model, or the part's key dimensions when a `<name>.dims.json` sidecar sits next to the file (written by the focus motor mount generator).
 
 ---
 

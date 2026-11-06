@@ -422,6 +422,9 @@
       return { vertexCount: ids.size, watertight, volume: Math.abs(volume) };
     }
 
+    // Optional ?color=red or ?color=%23cc2222 (any CSS colour) for the model
+    const modelColor = new THREE.Color(new URLSearchParams(location.search).get('color') || '#38bdf8');
+
     function setMesh(geometry, fileName = 'part.stl') {
       if (currentMesh) {
         scene.remove(currentMesh);
@@ -441,8 +444,11 @@
       // Place part sitting upright on print bed
       geometry.translate(0, 0, (bbox.max.z - bbox.min.z) / 2);
 
+      // Per-part colours (3MF basematerials) win over the single model colour
+      const hasColors = !!geometry.getAttribute('color');
       const material = new THREE.MeshStandardMaterial({
-        color: 0x38bdf8,
+        color: hasColors ? 0xffffff : modelColor,
+        vertexColors: hasColors,
         metalness: 0.15,
         roughness: 0.4,
         wireframe: wireframe
@@ -542,11 +548,23 @@
       const objects = {};
       for (const o of doc.getElementsByTagName('object')) objects[o.getAttribute('id')] = o;
 
+      // basematerials id -> list of THREE.Color (displaycolor is #RRGGBB or #RRGGBBAA)
+      const materials = {};
+      for (const g of doc.getElementsByTagName('basematerials')) {
+        materials[g.getAttribute('id')] = [...g.getElementsByTagName('base')]
+          .map(b => new THREE.Color((b.getAttribute('displaycolor') || '#cccccc').slice(0, 7)));
+      }
+
       const positions = [];
+      const colors = [];
+      let anyColor = false;
       function visit(id, m) {
         const o = objects[id];
         const mesh = o.getElementsByTagName('mesh')[0];
         if (mesh) {
+          const color = materials[o.getAttribute('pid')]?.[+(o.getAttribute('pindex') || 0)];
+          if (color) anyColor = true;
+          const rgb = color ? [color.r, color.g, color.b] : [modelColor.r, modelColor.g, modelColor.b];
           const v = [];
           for (const e of mesh.getElementsByTagName('vertex')) {
             const x = +e.getAttribute('x'), y = +e.getAttribute('y'), z = +e.getAttribute('z');
@@ -557,7 +575,10 @@
             ]);
           }
           for (const t of mesh.getElementsByTagName('triangle')) {
-            for (const k of ['v1', 'v2', 'v3']) positions.push(...v[+t.getAttribute(k)]);
+            for (const k of ['v1', 'v2', 'v3']) {
+              positions.push(...v[+t.getAttribute(k)]);
+              colors.push(...rgb);
+            }
           }
         }
         for (const c of o.getElementsByTagName('component')) {
@@ -570,6 +591,7 @@
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      if (anyColor) geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
       setMesh(geometry, fileName);
     }
 

@@ -50,6 +50,22 @@ Estimated time about 2 to 3 hours and 25 to 40 g (rough estimate, +/-30%; not sl
 - Assumed (verify on the real shoe): 6.0 mm / 10.0 mm are nominal with no print tolerance added; use `--hole` / `--recess-d` to open them up (for example 6.3 / 10.4).
 - Lug hex nut trap replaced by a round hole for a brass insert: **5.6 mm dia x 4 mm deep** from the lug's outer face (`--insert-d` / `--insert-depth`, sized for an M4 insert; the existing 4.6 mm bore continues through the remaining 1 mm to the slit). Check against your insert's datasheet.
 
+### Second band (`output/ETX_105_second_band.3mf`)
+
+Written by the same script (`--spacing 0` turns it off; `--second-band-out` sets the file). For stability a second clamp band, printed separately, holds the far end of the plate.
+
+- Bands **90 mm** apart centre to centre (`--spacing`), the second one at the far end, past the top of the mount's wall block.
+- The mount's plate is extended along the tube to the far end, so the mount is now **100 mm** tall (141 x 146 x 100 mm, about 73 cm³). It stays 14 mm thick up to 0.3 mm short of the second band, then steps down to an **8 mm lap** over the last 20 mm.
+- Second band: the same band, lug, slit and lug insert hole as the mount, cut to the band plus 20 mm of its wall block, topped by a **45 x 20 mm pad** whose top meets the lap underside. Printed band-down, 141 x 138 x 20 mm, about 21 cm³. In use it is flipped so the band is at the far end.
+- Joined by **2 x M3** screws side by side (+/-12 mm from the plate centre line, in the middle of the lap): **4.0 mm x 6.5 mm deep** insert holes in the pad (for 5 mm long M3 inserts), 3.4 mm clearance holes through the lap with **6.5 mm x 3.5 mm deep** counterbores in the top face. Use **M3 x 10** socket head screws (4.5 mm of lap + 5.5 mm into the insert).
+- The screws are outside the clamp's footprint and under the bar's 8 mm clearance above the plate.
+
+## Assembly preview (`output/etx105-assembly.3mf`)
+
+- Regenerate: `npm run build:etx105-assembly` (after rebuilding any of the parts). View with `viewer/index.html?file=../output/etx105-assembly.3mf`; each part has its own display colour (mount grey, second band darker grey, clamp red, bar blue).
+- The [Vixen clamp](vixen-clamp.md) sits centred on the original 45 mm square of the plate (at the first band's end) with its channel along the tube axis; its four 6 mm holes on a 20 mm square line up with the plate holes. The [Vixen bar](vixen-plate.md) sits in the channel on the clamp floor, centred along the clamp. The second band is mirrored along the tube into place under the lap. No parts overlap.
+- For viewing only; print each part from its own file. The viewer reports the assembly as not watertight because touching parts share vertex positions; each part is watertight on its own.
+
 ## Related fixes in this repo
 
 - Gear profile was traced clockwise per tooth, producing a self-intersecting outline and a wrong (about half) volume; fixed in `src/utils/gear.js` with a regression test.

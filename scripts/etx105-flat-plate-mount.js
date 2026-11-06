@@ -12,13 +12,17 @@
  *   the underside (ring side), continued through the wall block so the heads can be fitted
  *   from inside the ring.
  * - The lug's hex nut trap is replaced by a round hole for a brass insert (--insert-d / --insert-depth).
+ * - Second band (--spacing 90 between band centres, 0 = none): the plate is extended along the tube
+ *   and ends in a thinner lap; a separately printed band (written to --second-band-out, default
+ *   ETX_105_second_band.3mf next to <out.3mf>) has a pad with two M3 insert holes under the lap,
+ *   joined by two M3 screws through counterbored holes in the lap. See notes/etx105-adapter.md.
  */
 
 import path from 'node:path';
-import Module from 'manifold-3d';
 import {
   read3MF,
   write3MF,
+  export3MF,
   setObjectMesh,
   get3MFParts,
   computeBoundingBox,
@@ -26,6 +30,7 @@ import {
   checkWatertight
 } from '../src/utils/index.js';
 import { resizeRing, CENTER } from './lib/etx-ring.js';
+import { initManifold } from './lib/manifold-mesh.js';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -52,45 +57,26 @@ const recessDepth = opt('recess-depth', 8);
 // Plate centre height in ring object space (wall block spans z -23.5..23.5; the 10 mm band is
 // z -23.5..-13.5). 2 keeps the lower recesses clear of the band.
 const plateZ = opt('plate-z', 2);
+// Second band: printed separately, joined to a lap at the far end of the extended plate with
+// screws into brass inserts. --spacing 0 disables it.
+const spacing = opt('spacing', 90);          // mm, between band centres along the tube
+const bandBlock = opt('band-block', 20);     // mm, length of the second band's block / lap along the tube
+const padTop = opt('pad-top', 6);            // mm, second band's pad top above the wall block face
+const joinX = opt('join-x', 12);             // mm, joining screws at cx +/- joinX
+const joinInsertD = opt('join-insert-d', 4.0); // M3 insert hole
+const joinInsertDepth = opt('join-insert-depth', 6.5);
+const joinScrewD = opt('join-screw-d', 3.4); // M3 clearance
+const joinCbD = opt('join-cb-d', 6.5);       // M3 socket head counterbore
+const joinCbDepth = opt('join-cb-depth', 3.5);
+const secondBandOut = path.resolve(
+  args[args.indexOf('--second-band-out') + 1] && args.includes('--second-band-out')
+    ? args[args.indexOf('--second-band-out') + 1]
+    : path.join(path.dirname(outFile), 'ETX_105_second_band.3mf')
+);
 const ringObjectId = 1;
 const removeObjectIds = [2, 3];
 
-const wasm = await Module();
-wasm.setup();
-const { Manifold, Mesh } = wasm;
-
-function toManifold(mesh) {
-  const build = (flip) => {
-    const m = new Mesh({
-      numProp: 3,
-      vertProperties: new Float32Array(mesh.vertices.flat()),
-      triVerts: new Uint32Array(mesh.faces.flatMap(f => (flip ? [f[0], f[2], f[1]] : f)))
-    });
-    m.merge();
-    return new Manifold(m);
-  };
-  let m = build(false);
-  if (m.volume() < 0) m = build(true);
-  if (m.status() !== 'NoError') throw new Error(`Ring mesh is not a valid manifold: ${m.status()}`);
-  return m;
-}
-
-function fromManifold(m) {
-  const mesh = m.getMesh();
-  const vertices = [];
-  for (let i = 0; i < mesh.vertProperties.length; i += mesh.numProp) {
-    vertices.push([mesh.vertProperties[i], mesh.vertProperties[i + 1], mesh.vertProperties[i + 2]]);
-  }
-  const faces = [];
-  for (let i = 0; i < mesh.triVerts.length; i += 3) {
-    faces.push([mesh.triVerts[i], mesh.triVerts[i + 1], mesh.triVerts[i + 2]]);
-  }
-  return { vertices, faces };
-}
-
-// Cylinder along +Y from y0 to y1 at (x, z)
-const cylY = (x, z, y0, y1, d) =>
-  Manifold.cylinder(y1 - y0, d / 2, d / 2, 96).rotate([-90, 0, 0]).translate([x, y0, z]);
+const { Manifold, toManifold, fromManifold, cylY } = await initManifold();
 
 const pkg = read3MF(path.resolve(inFile));
 const ring = pkg.objects.get(ringObjectId);
@@ -98,15 +84,16 @@ if (!ring?.mesh) throw new Error(`Object ${ringObjectId} is not a mesh`);
 
 const resized = resizeRing(ring.mesh, { innerDiameter, slitExtra });
 const yFace = Math.max(...resized.vertices.map(v => v[1])); // wall block outer face
+const zMin = Math.min(...resized.vertices.map(v => v[2]));  // band bottom (band is 10 mm tall)
+const bandH = 10;
 const cx = CENTER[0];
 
-const plate = Manifold.cube([plateSize, plateThickness + 1, plateSize]).translate([
-  cx - plateSize / 2,
-  yFace - 1,
-  plateZ - plateSize / 2
-]);
+const box = (x0, x1, y0, y1, z0, z1) => Manifold.cube([x1 - x0, y1 - y0, z1 - z0]).translate([x0, y0, z0]);
+const px0 = cx - plateSize / 2, px1 = cx + plateSize / 2;
 
-let solid = toManifold({ vertices: resized.vertices, faces: ring.mesh.faces }).add(plate);
+const plate = box(px0, px1, yFace - 1, yFace + plateThickness, plateZ - plateSize / 2, plateZ + plateSize / 2);
+
+let ringSolid = toManifold({ vertices: resized.vertices, faces: ring.mesh.faces });
 
 // Replace the hex nut trap with a round hole for a brass insert: fill the hex (flush with the
 // lug's outer face, overlapping into the floor), then drill the insert hole from the outer face.
@@ -115,7 +102,27 @@ const yOuter = Math.fround(nut.yOuter);
 const hexFill = Manifold.cylinder(yOuter - nut.yFloor + 0.5, nut.cornerRadius + 0.2, nut.cornerRadius + 0.2, 6)
   .rotate([-90, 0, 0])
   .translate([nut.x, nut.yFloor - 0.5, nut.z]);
-solid = solid.add(hexFill).subtract(cylY(nut.x, nut.z, yOuter - insertDepth, yOuter + 1, insertD));
+ringSolid = ringSolid.add(hexFill).subtract(cylY(nut.x, nut.z, yOuter - insertDepth, yOuter + 1, insertD));
+
+let solid = ringSolid.add(plate);
+
+// Plate extension to the second band: full thickness, then a thinner lap over the band's pad
+const zTop = zMin + spacing + bandH;          // far end of the mount (outer edge of band 2)
+const lapZ0 = zTop - bandBlock;               // start of the lap / band 2's block
+const joinZ = lapZ0 + bandBlock / 2;
+const lapY0 = yFace + padTop;
+if (spacing) {
+  if (lapZ0 < plateZ + plateSize / 2) throw new Error(`--spacing ${spacing} is too small for the plate`);
+  solid = solid
+    .add(box(px0, px1, yFace - 1, yFace + plateThickness, plateZ + plateSize / 2 - 1, lapZ0 - 0.3))
+    .add(box(px0, px1, lapY0, yFace + plateThickness, lapZ0 - 0.31, zTop));
+  for (const sx of [-1, 1]) {
+    const x = cx + sx * joinX;
+    solid = solid
+      .subtract(cylY(x, joinZ, lapY0 - 1, yFace + plateThickness + 1, joinScrewD))
+      .subtract(cylY(x, joinZ, yFace + plateThickness - joinCbDepth, yFace + plateThickness + 1, joinCbD));
+  }
+}
 
 const p = holePitch / 2;
 const holeCentres = [[-p, -p], [p, -p], [-p, p], [p, p]].map(([dx, dz]) => [cx + dx, plateZ + dz]);
@@ -148,6 +155,21 @@ if (settings) {
 
 write3MF(path.resolve(outFile), pkg);
 
+// Second band, in print orientation (band on the bed): the ring cut down to the band plus a
+// bandBlock long piece of its wall block, a pad on top with the insert holes. In the assembly it
+// is mirrored along the tube so the band sits at the far end (z_mount = zTop - z_print).
+let band2Mesh = null;
+if (spacing) {
+  let band2 = ringSolid
+    .intersect(box(-1000, 1000, -1000, 1000, zMin - 1, zMin + bandBlock))
+    .add(box(px0, px1, yFace - 1, lapY0, zMin, zMin + bandBlock));
+  for (const sx of [-1, 1]) {
+    band2 = band2.subtract(cylY(cx + sx * joinX, zMin + bandBlock / 2, lapY0 - joinInsertDepth, lapY0 + 1, joinInsertD));
+  }
+  band2Mesh = fromManifold(band2.translate([0, 0, -zMin]));
+  export3MF(secondBandOut, band2Mesh, { name: 'ETX_105_second_band' });
+}
+
 const fmt = a => a.map(n => n.toFixed(2)).join(' x ');
 const slitFaces = [...new Set(mesh.vertices.filter(v => v[0] < CENTER[0] - resized.rInNew - resized.wall - 4).map(v => v[1].toFixed(2)))];
 console.log(`Ring ID ${innerDiameter} mm (OD ${(resized.rOutNew * 2).toFixed(1)}), slit widened by ${slitExtra} mm (2 -> ${2 + slitExtra} mm)`);
@@ -157,4 +179,9 @@ console.log(`Lug vertex y values: ${slitFaces.join(', ')}`);
 for (const part of get3MFParts(read3MF(path.resolve(outFile)))) {
   const bb = computeBoundingBox(part.mesh);
   console.log(`- ${part.name}: size ${fmt(bb.size)} mm, volume ${(computeMeshVolumeAndArea(part.mesh).volume / 1000).toFixed(2)} cm³, watertight ${checkWatertight(part.mesh).isWatertight}`);
+}
+if (band2Mesh) {
+  const bb = computeBoundingBox(band2Mesh);
+  console.log(`Second band: ${spacing} mm between band centres, joined by 2 x M3 (insert ${joinInsertD} x ${joinInsertDepth} deep, screw M3 x ${Math.round(plateThickness - padTop - joinCbDepth + 5)})`);
+  console.log(`- second band: size ${fmt(bb.size)} mm, volume ${(computeMeshVolumeAndArea(band2Mesh).volume / 1000).toFixed(2)} cm³, watertight ${checkWatertight(band2Mesh).isWatertight} -> ${secondBandOut}`);
 }

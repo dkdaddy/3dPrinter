@@ -9,7 +9,10 @@
     "build:focus-belt-gear": "node src/parts/focus-belt-gear/index.js",
     "build:focus-motor-mount": "node src/parts/focus-motor-mount/index.js",
     "build:all": "node scripts/generate-all.js",
-    "build:etx105-flat-plate-mount": "node scripts/etx105-flat-plate-mount.js models/ETX_90_part_1_SV165_adapter_2.3mf output/ETX_105_flat_plate_mount.3mf"
+    "build:etx105-flat-plate-mount": "node scripts/etx105-flat-plate-mount.js models/ETX_90_part_1_SV165_adapter_2.3mf output/ETX_105_flat_plate_mount.3mf",
+    "build:vixen-plate": "node scripts/vixen-plate.js output/vixen-plate.3mf",
+    "build:vixen-clamp": "node scripts/vixen-clamp.js output/vixen-clamp.3mf",
+    "build:etx105-assembly": "node scripts/etx105-assembly.js output/etx105-assembly.3mf"
   },
   "keywords": [
     "3d-printing",
