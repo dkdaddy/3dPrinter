@@ -40,6 +40,16 @@ Bambu Lab A1, 0.4 mm nozzle, 0.20 mm Standard, Bambu PLA Basic, 2 walls, 15% gri
 
 Estimated time about 2 to 3 hours and 25 to 40 g (rough estimate, +/-30%; not sliced). Re-slice in Bambu Studio for real numbers and check that supports around the vertical plate are reasonable.
 
+## Variant: flat-plate mount (`output/ETX_105_flat_plate_mount.3mf`)
+
+- Regenerate: `node scripts/etx105-flat-plate-mount.js models/ETX_90_part_1_SV165_adapter_2.3mf output/ETX_105_flat_plate_mount.3mf` (needs `npm install` for `manifold-3d`, used for the boolean cuts). All dimensions are options, see the script header.
+- Ring: same 125 mm ID circle, lug slit opened from 2 to **5 mm** (bolt mounts 3 mm further apart). The band arc is 3 mm shorter, so closing the bolt to the old 2 mm gap gives a clamped ID of about 124.0 mm (about 123.4 mm fully closed) instead of 125.
+- `rail` / `stop` (SV165 shoe) removed. New **45 x 45 x 14 mm plate** on the wall block's outer face, plate centre 2 mm above the block centre so the lower recesses clear the ring band.
+- 4 x **6 mm** through holes on a **20 mm** square pattern. Each has a **10 mm dia x 8 mm deep** recess on the underside for an M6 socket head; the recess continues through the 3.9 mm wall block so the heads can be fitted from inside the ring.
+- Total height 48 mm (hole is 6 mm deep above the 8 mm recess; M6 x 14 gives 8 mm thread in the shoe), footprint 141 x 144 mm. Printed ring-flat the plate stands vertical and the horizontal recesses need supports or bridging; the project's print settings are kept, thumbnails are stale.
+- Assumed (verify on the real shoe): 6.0 mm / 10.0 mm are nominal with no print tolerance added; use `--hole` / `--recess-d` to open them up (for example 6.3 / 10.4).
+- Lug hex nut trap replaced by a round hole for a brass insert: **5.6 mm dia x 4 mm deep** from the lug's outer face (`--insert-d` / `--insert-depth`, sized for an M4 insert; the existing 4.6 mm bore continues through the remaining 1 mm to the slit). Check against your insert's datasheet.
+
 ## Related fixes in this repo
 
 - Gear profile was traced clockwise per tooth, producing a self-intersecting outline and a wrong (about half) volume; fixed in `src/utils/gear.js` with a regression test.

@@ -8,7 +8,8 @@
     "build:focus-wheel": "node src/parts/focus-wheel/index.js",
     "build:focus-belt-gear": "node src/parts/focus-belt-gear/index.js",
     "build:focus-motor-mount": "node src/parts/focus-motor-mount/index.js",
-    "build:all": "node scripts/generate-all.js"
+    "build:all": "node scripts/generate-all.js",
+    "build:etx105-flat-plate-mount": "node scripts/etx105-flat-plate-mount.js models/ETX_90_part_1_SV165_adapter_2.3mf output/ETX_105_flat_plate_mount.3mf"
   },
   "keywords": [
     "3d-printing",
@@ -19,5 +20,8 @@
     "parametric"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "manifold-3d": "^3.5.4"
+  }
 }
